@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import obtener_sesion
-from app.modules.vacaciones.schemas.feriado_schema import FeriadoRespuesta
-from app.modules.vacaciones.services.feriado_service import obtener_feriados
+from app.core.database import obtener_sesion
+from app.modules.vacaciones.feriados.schema import FeriadoRespuesta
+from app.modules.vacaciones.feriados.service import obtener_feriados
 
 # ruta para conectar con el main y uso de prefix para saber la ruta de este controlador
 router = APIRouter(

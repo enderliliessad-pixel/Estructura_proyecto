@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.models.saldo_model import Saldo
+from app.modules.vacaciones.saldos.model import Saldo
 
 # funcion para consultar el saldo y trae una lista
 async def consultar_saldos_por_empleado(

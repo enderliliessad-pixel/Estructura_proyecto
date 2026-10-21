@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.models.aprobacion_model import Aprobacion
+from app.modules.vacaciones.aprobaciones.model import Aprobacion
 
 # funcion asyn para aceptar varias consultas
 # recibe la sesion para conectar con la base y busca la id de la solicitud

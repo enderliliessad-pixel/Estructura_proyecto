@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.repositories.feriado_repository import consultar_feriados
-from app.modules.vacaciones.schemas.feriado_schema import FeriadoRespuesta
+from app.modules.vacaciones.feriados.repository import consultar_feriados
+from app.modules.vacaciones.feriados.schema import FeriadoRespuesta
 
 # funcion asyn para obtener los feriados, va a devolver una lista
 # se guardara la consulta en feriado

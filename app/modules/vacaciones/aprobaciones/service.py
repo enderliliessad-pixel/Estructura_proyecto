@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.repositories.aprobacion_repository import (
+from app.modules.vacaciones.aprobaciones.repository import (
     consultar_aprobaciones_por_solicitud,
 )
-from app.modules.vacaciones.schemas.aprobacion_schema import AprobacionRespuesta
+from app.modules.vacaciones.aprobaciones.schema import AprobacionRespuesta
 
 # funcion async para obtener las aprobaciones
 # obtenemos la sesion, el id y devolvera una lista

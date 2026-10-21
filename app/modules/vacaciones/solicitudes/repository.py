@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.models.solicitud_model import Solicitud
+from app.modules.vacaciones.solicitudes.model import Solicitud
 
 # funcion para consultar solicitudes y trae una lista
 async def consultar_solicitudes_por_empleado(

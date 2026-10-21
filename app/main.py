@@ -2,14 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config import Configuracion, obtener_configuracion
-from app.database import crear_sesiones, crear_conexion
+from app.core.config import Configuracion, obtener_configuracion
+from app.core.database import crear_sesiones, crear_conexion
 
-from app.modules.vacaciones.controllers.aprobacion_controller import (router as aprobacion_router,)
-from app.modules.vacaciones.controllers.feriado_controller import (router as feriado_router,)
-from app.modules.vacaciones.controllers.permiso_controller import (router as permiso_router,)
-from app.modules.vacaciones.controllers.saldo_controller import (router as saldo_router,)
-from app.modules.vacaciones.controllers.solicitud_controller import (router as solicitud_router,)
+from app.modules.vacaciones.aprobaciones.router import (router as aprobacion_router,)
+from app.modules.vacaciones.feriados.router import (router as feriado_router,)
+from app.modules.vacaciones.permisos.router import (router as permiso_router,)
+from app.modules.vacaciones.saldos.router import (router as saldo_router,)
+from app.modules.vacaciones.solicitudes.router import (router as solicitud_router,)
 
 # crearmos una funcion que traiga la configuracion o nada si no resive datos.
 def crear_app(configuracion: Configuracion | None = None) -> FastAPI:

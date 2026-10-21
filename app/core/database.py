@@ -6,7 +6,7 @@ from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
-from app.config import Configuracion
+from app.core.config import Configuracion
 
 # creamos una clase principal llamada base
 # utilizamos DeclarativeBase para decir que la clase se use como plantilla para decir cual es una tabla

@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.repositories.permiso_repository import (
+from app.modules.vacaciones.permisos.repository import (
     consultar_permisos_por_empleado,
 )
-from app.modules.vacaciones.schemas.permiso_schema import PermisoRespuesta
+from app.modules.vacaciones.permisos.schema import PermisoRespuesta
 
 # funcion para obtener los permisos, devolvera una lista
 async def obtener_permisos_por_empleado(

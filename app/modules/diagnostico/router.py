@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import obtener_sesion
-from app.modules.vacaciones.schemas.estado_schema import EstadoRespuesta
-from app.modules.vacaciones.services.estado_service import comprobar_base_datos
+from app.core.database import obtener_sesion
+from app.modules.diagnostico.schema import EstadoRespuesta
+from app.modules.diagnostico.service import comprobar_base_datos
 
 # seccion para conocer si la conexion con la base es estable
 router = APIRouter(

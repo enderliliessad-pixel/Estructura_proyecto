@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import obtener_sesion
-from app.modules.vacaciones.schemas.aprobacion_schema import AprobacionRespuesta
-from app.modules.vacaciones.services.aprobacion_service import (
+from app.core.database import obtener_sesion
+from app.modules.vacaciones.aprobaciones.schema import AprobacionRespuesta
+from app.modules.vacaciones.aprobaciones.service import (
     obtener_aprobaciones_por_solicitud,
 )
 

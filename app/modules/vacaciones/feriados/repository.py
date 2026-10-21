@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.models.feriado_model import Feriado
+from app.modules.vacaciones.feriados.model import Feriado
 
 # funcion para indicar que se conectara con la base y devolvera una lista
 async def consultar_feriados(sesion: AsyncSession) -> list[Feriado]:

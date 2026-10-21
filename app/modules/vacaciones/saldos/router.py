@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import obtener_sesion
-from app.modules.vacaciones.schemas.saldo_schema import SaldoRespuesta
-from app.modules.vacaciones.services.saldo_service import obtener_saldos_por_empleado
+from app.core.database import obtener_sesion
+from app.modules.vacaciones.saldos.schema import SaldoRespuesta
+from app.modules.vacaciones.saldos.service import obtener_saldos_por_empleado
 
 # ruta para conectar con el main y uso de prefix para saber la ruta de este controlador
 router = APIRouter(
