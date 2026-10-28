@@ -1,3 +1,7 @@
+from datetime import date
+from app.modules.vacaciones.saldos.schema import ResumenSaldoRespuesta, PrevisionRespuesta
+from app.modules.vacaciones.saldos.service import obtener_resumen_saldo, prever_descuentos
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path
@@ -34,3 +38,36 @@ async def consultar_saldos(
 ) -> list[SaldoRespuesta]:
     # Se pasa el id del empleado y la sesion
     return await obtener_saldos_por_empleado(sesion, id_empleado)
+
+# documentacion para consultar saldo
+@router.get(
+    "/{id_empleado}/resumen", response_model=ResumenSaldoRespuesta,
+    summary="Consultar saldos por período y total acreditado",
+    description="Suma únicamente saldos ya acreditados. Requiere fechas y cantidades completas y consistentes.",
+    responses={404: {"description": "El empleado no existe."}, 409: {"description": "Revisar los datos de los saldos."}},
+)
+# funcion para consultar el resumen de saldo
+async def consultar_resumen_saldo(
+    id_empleado: Annotated[int, Path(ge=1, le=9223372036854775807)],
+    sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
+) -> ResumenSaldoRespuesta:
+    return await obtener_resumen_saldo(sesion, id_empleado)
+
+# documentacion para consultar prevision de saldo
+@router.get(
+    "/{id_empleado}/prevision", response_model=PrevisionRespuesta,
+    summary="Prever el descuento desde los períodos más antiguos",
+    description=(
+        "Solo consulta: no aprueba, no reserva y no modifica saldos. Usa días acreditados hoy, "
+        "aunque la solicitud sea futura. El faltante no autoriza vacaciones anticipadas. "
+        "fecha_fin es el último día de ausencia. Identidad y roles pendientes de Core."
+    ),
+    responses={404: {"description": "El empleado no existe."}, 409: {"description": "Revisar los datos de los saldos."}},
+)
+# funcion para consultar prevision
+async def consultar_prevision(
+    id_empleado: Annotated[int, Path(ge=1, le=9223372036854775807)],
+    fecha_inicio: date, fecha_fin: date,
+    sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
+) -> PrevisionRespuesta:
+    return await prever_descuentos(sesion, id_empleado, fecha_inicio, fecha_fin)

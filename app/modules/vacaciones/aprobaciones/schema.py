@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # esquema para verificar el formato 
 class AprobacionRespuesta(BaseModel):
@@ -14,3 +14,11 @@ class AprobacionRespuesta(BaseModel):
     fecha: datetime | None
     decision: str | None
     observacion: str | None
+
+
+# datos necesarios para registrar el rechazo de una solicitud
+class RechazoCrear(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    id_aprobador: int = Field(strict=True, ge=1, le=9223372036854775807)
+    observacion: str = Field(min_length=1)

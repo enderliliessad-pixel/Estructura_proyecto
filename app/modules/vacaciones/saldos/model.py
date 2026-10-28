@@ -1,6 +1,7 @@
+from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Numeric, String
+from sqlalchemy import BigInteger, Date, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -17,5 +18,10 @@ class Saldo(Base):
     dias_asignados: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     dias_utilizados: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
     dias_disponibles: Mapped[Decimal | None] = mapped_column(Numeric(6, 2), nullable=True)
+    # fechas reales; no se deducen del texto del período ni del ID
+    fecha_inicio_periodo: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_fin_periodo: Mapped[date | None] = mapped_column(Date, nullable=True)
+    fecha_acreditacion: Mapped[date | None] = mapped_column(Date, nullable=True)
+
 # uso de mapped para definir el tipo de dato que va a tener
 # mapped_column sirve para definir reglas de esa columna, como si es clave primaria o nulo, etc.

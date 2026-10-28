@@ -64,6 +64,7 @@ DB_PASSWORD=CAMBIA_POR_TU_CONTRASENA_LOCAL
 
 ## 4. Creacion de la base de datos
 Se va a crar una base de datos siguiento la infraestructura propuesta por el itq, existe un ejemplo especifico para vacaciones en sql
+Se tiene que incrementar una tabla para poder realizar la division de los dias antiguos y los nuevos, se encuentra el sql en la carpeta con el mismo nombre y se llama periodos y descuentos
 
 
 ## 5. Iniciar el servidor 
@@ -75,6 +76,10 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Documentación de la API: <http://127.0.0.1:8000/docs>.
+
+
+
+
 
 Las rutas del módulo usan el prefijo `/api/v1/vacaciones`.
 En una base recién creada, las consultas de listas devolverán listas vacías hasta registrar datos en la base de datos

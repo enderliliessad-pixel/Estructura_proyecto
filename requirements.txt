@@ -5,3 +5,6 @@ pydantic-settings>=2.11,<3
 SQLAlchemy[asyncio]>=2.0.45,<2.1
 asyncpg>=0.31,<1
 
+
+# Base de zonas horarias para Windows (America/Guayaquil).
+tzdata>=2024.1

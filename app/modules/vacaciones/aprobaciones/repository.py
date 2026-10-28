@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.vacaciones.aprobaciones.model import Aprobacion
@@ -21,3 +21,20 @@ async def consultar_aprobaciones_por_solicitud(
     # espera a la consulta con la base y devulve el resultado como lista
     resultado = await sesion.scalars(consulta)
     return list(resultado.all())
+
+
+# comprobamos que exista el empleado que registra la decisión
+async def existe_aprobador(sesion: AsyncSession, id_aprobador: int) -> bool:
+    # la consulta en tipo texto para vere si existe el empleado, solo trae true o false
+    consulta = text(
+        "SELECT EXISTS (SELECT 1 FROM core.empleados WHERE id_empleado = :id_aprobador)"
+    )
+    return bool(await sesion.scalar(consulta, {"id_aprobador": id_aprobador}))
+
+
+# guardamos la decisión dentro de la transacción que controla el servicio
+async def insertar_aprobacion(sesion: AsyncSession, aprobacion: Aprobacion) -> Aprobacion:
+    sesion.add(aprobacion)
+    await sesion.flush()
+    await sesion.refresh(aprobacion)
+    return aprobacion
