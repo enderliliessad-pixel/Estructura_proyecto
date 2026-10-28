@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-
+from app.modules.diagnostico.router import router as diagnostico_router
 from app.modules.vacaciones.calculos.router import router as calculo_router
 
 from app.core.config import Configuracion, obtener_configuracion
@@ -50,7 +50,8 @@ def crear_app(configuracion: Configuracion | None = None) -> FastAPI:
 
     # Dirección común para las rutas del módulo.
     prefijo = "/api/v1/vacaciones"
-    # las rutas con el prefijo
+    # las rutas con el prefijo    
+    aplicacion.include_router(diagnostico_router, prefix=prefijo)
     aplicacion.include_router(calculo_router, prefix=prefijo)
     aplicacion.include_router(saldo_router, prefix=prefijo)
     aplicacion.include_router(solicitud_router, prefix=prefijo)
