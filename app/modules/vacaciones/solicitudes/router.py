@@ -41,6 +41,7 @@ async def consultar_solicitudes(
     # Se pasa el id del empleado y la sesio
     return await obtener_solicitudes_por_empleado(sesion, id_empleado)
 
+
 # peticions para registrar una solicitud
 @router.post(
     "",

@@ -4,7 +4,6 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.vacaciones.calculos.service import calcular_dias_solicitud
 from app.modules.vacaciones.solicitudes.model import Solicitud
 from app.modules.vacaciones.aprobaciones.repository import consultar_aprobaciones_por_solicitud
 from app.modules.vacaciones.solicitudes.repository import (
@@ -15,6 +14,7 @@ from app.modules.vacaciones.solicitudes.repository import (
     guardar_cambios_solicitud,
     insertar_solicitud,
 )
+from app.modules.vacaciones.calculos.service import calcular_dias_solicitud
 from app.modules.vacaciones.solicitudes.schema import SolicitudRespuesta, SolicitudCrear, SolicitudActualizar
 
 # funcion para obtener las solicitudes y devuelve una lista
