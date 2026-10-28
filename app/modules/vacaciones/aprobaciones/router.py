@@ -1,3 +1,5 @@
+from app.modules.vacaciones.aprobaciones.schema import AprobacionCrear
+from app.modules.vacaciones.aprobaciones.service import aprobar_solicitud   
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path
@@ -68,3 +70,20 @@ async def registrar_rechazo(
     sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
 ) -> AprobacionRespuesta:
     return await rechazar_solicitud(sesion, id_solicitud, datos)
+
+# ruta para registrar la aprobacion final y descontar los dias reservados
+@router.post("/{id_solicitud}/aprobacion", 
+             response_model=AprobacionRespuesta, 
+             status_code=201,
+             summary="Registrar aprobación final de Talento Humano y descontar la reserva",
+             description="Operación local con aprobador habilitado en la base. Identidad autenticada pendiente de Core. Las firmas previas se verifican fuera de esta API.",
+             responses={403: {"description": "Responsable no habilitado."}, 409: {"description": "Estado o reserva incompatible."}})
+
+# funcion async para recibir la peticion de aprobacion
+async def registrar_aprobacion(id_solicitud: Annotated[int, Path(ge=1, le=9223372036854775807)],
+                            # recibimos el aprobador y la observacion usando el esquema de validacion
+                              datos: AprobacionCrear,
+                              sesion: Annotated[AsyncSession, Depends(obtener_sesion)]) -> AprobacionRespuesta:
+    # llamamos al servicio que valida, aprueba y descuenta la reserva
+    # esperamos el resultado y devolvemos la respuesta
+    return await aprobar_solicitud(sesion, id_solicitud, datos)

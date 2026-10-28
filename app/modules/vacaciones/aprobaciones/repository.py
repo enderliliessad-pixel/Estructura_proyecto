@@ -38,3 +38,9 @@ async def insertar_aprobacion(sesion: AsyncSession, aprobacion: Aprobacion) -> A
     await sesion.flush()
     await sesion.refresh(aprobacion)
     return aprobacion
+
+# funcion para comprobar que el empleado esta habilitado como responsable de talento humano
+async def es_responsable_talento_humano(sesion: AsyncSession, id_empleado: int) -> bool:
+    consulta = text("SELECT EXISTS (SELECT 1 FROM vacaciones.responsables_talento_humano "
+                    "WHERE id_empleado = :id AND activo = true)")
+    return bool(await sesion.scalar(consulta, {"id": id_empleado}))

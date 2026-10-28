@@ -16,6 +16,7 @@ from app.modules.vacaciones.calculos.router import router as calculos
 from app.modules.vacaciones.saldos.router import router as saldos
 from app.modules.vacaciones.solicitudes.router import router as solicitudes
 from app.modules.vacaciones.saldos import service as saldos_service
+from app.modules.vacaciones.aprobaciones.router import router as aprobaciones
 
 
 @pytest.fixture
@@ -38,15 +39,18 @@ def db(monkeypatch):
                 (20,1,'Anterior',15,12,3,'2023-11-15','2024-11-14','2024-11-15'),
                 (10,1,'Actual',15,0,15,'2024-11-15','2025-11-14','2025-11-15'),
                 (30,1,'Futuro',15,0,15,'2025-11-15','2026-11-14','2026-11-15')''',
-                '''CREATE TABLE vacaciones.solicitudes (id_solicitud INTEGER PRIMARY KEY AUTOINCREMENT, id_empleado BIGINT, tipo TEXT, fecha_inicio DATE, fecha_fin DATE, dias_solicitados NUMERIC, horas_solicitadas NUMERIC, motivo TEXT, estado TEXT, fecha_solicitud TIMESTAMP)''',
+                '''CREATE TABLE vacaciones.solicitudes (id_solicitud INTEGER PRIMARY KEY AUTOINCREMENT, id_empleado BIGINT, tipo TEXT, fecha_inicio DATE, fecha_fin DATE, dias_solicitados NUMERIC, horas_solicitadas NUMERIC, motivo TEXT, estado TEXT, fecha_solicitud TIMESTAMP, reserva_gestionada BOOLEAN NOT NULL DEFAULT FALSE)''',
                 '''CREATE TABLE vacaciones.aprobaciones (id_aprobacion INTEGER PRIMARY KEY, id_solicitud BIGINT, id_aprobador BIGINT, fecha TIMESTAMP, decision TEXT, observacion TEXT)''',
-                'CREATE TABLE vacaciones.descuentos_por_periodo (id_descuento INTEGER PRIMARY KEY, id_solicitud BIGINT, id_saldo BIGINT, dias_descontados NUMERIC)',
+                'CREATE TABLE vacaciones.descuentos_por_periodo (id_descuento INTEGER PRIMARY KEY, id_empleado BIGINT, id_solicitud BIGINT, id_saldo BIGINT, dias_descontados NUMERIC, es_anticipo BOOLEAN, fecha_registro TIMESTAMP, UNIQUE(id_solicitud,id_saldo))',
+                '''CREATE TABLE vacaciones.reservas_por_periodo (id_reserva INTEGER PRIMARY KEY, id_empleado BIGINT, id_solicitud BIGINT, id_saldo BIGINT, dias_reservados NUMERIC, es_anticipo BOOLEAN, estado TEXT, fecha_registro TIMESTAMP, fecha_cierre TIMESTAMP)''',
+                'CREATE TABLE vacaciones.responsables_talento_humano (id_empleado INTEGER PRIMARY KEY, activo BOOLEAN)',
+                'INSERT INTO vacaciones.responsables_talento_humano VALUES (2,TRUE)',
             ]:
                 await c.execute(text(sql))
     asyncio.run(setup())
     monkeypatch.setattr(saldos_service, 'fecha_actual', lambda: date(2026,10,27))
     app = FastAPI()
-    for r in (calculos,saldos,solicitudes): app.include_router(r)
+    for r in (calculos,saldos,solicitudes,aprobaciones): app.include_router(r)
     async def sesion():
         async with factory() as s: yield s
     app.dependency_overrides[obtener_sesion] = sesion
@@ -106,12 +110,14 @@ def test_resumen_y_prevision_fifo_sin_escrituras(db):
     assert q('SELECT count(*) FROM vacaciones.descuentos_por_periodo')==[(0,)]
 
 
-def test_insuficiente_no_usa_futuro(db):
+def test_prevision_incluye_anticipo_del_periodo_en_curso(db):
     c,_,_=db
     r=consulta(c,'2027-01-01','2027-01-20','/saldos/1/prevision').json()
-    assert r['saldo_suficiente'] is False
-    assert Decimal(r['dias_sin_cobertura'])==2
-    assert all(d['id_saldo']!=30 for d in r['descuentos'])
+    assert r['saldo_suficiente'] is True
+    assert Decimal(r['dias_sin_cobertura'])==0
+    assert r['descuentos'][-1]['id_saldo']==30
+    assert r['descuentos'][-1]['es_anticipo'] is True
+    assert Decimal(r['descuentos'][-1]['dias_a_descontar'])==2
 
 
 def test_aniversario_incluye_saldo_ya_registrado(db,monkeypatch):

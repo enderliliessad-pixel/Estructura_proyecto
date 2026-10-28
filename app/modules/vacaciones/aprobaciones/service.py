@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from app.modules.vacaciones.reservas.service import liberar_reservas, descontar_reservas, validar_solicitud_reservable
+from app.modules.vacaciones.aprobaciones.repository import es_responsable_talento_humano
+from app.modules.vacaciones.aprobaciones.schema import AprobacionCrear
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -12,7 +15,7 @@ from app.modules.vacaciones.aprobaciones.repository import (
 from app.modules.vacaciones.aprobaciones.schema import AprobacionRespuesta, RechazoCrear
 from app.modules.vacaciones.aprobaciones.model import Aprobacion
 from app.modules.vacaciones.solicitudes.repository import (
-    consultar_solicitud_para_actualizar,
+    bloquear_solicitud_y_empleado,
     guardar_cambios_solicitud,
 )
 
@@ -37,7 +40,7 @@ async def rechazar_solicitud(
         # si ocurre un error se revierten los cambios, caso contrario se confirman
         async with sesion.begin():
             # consultamos la solicitud y bloqueamos la fila hasta que se realize el cambio
-            solicitud = await consultar_solicitud_para_actualizar(sesion, id_solicitud)
+            solicitud = await bloquear_solicitud_y_empleado(sesion, id_solicitud)
             if solicitud is None:
                 raise HTTPException(status_code=404, detail="La solicitud no existe.")
             if solicitud.tipo != "VACACIONES":
@@ -68,6 +71,9 @@ async def rechazar_solicitud(
                 # esto conserva la hora UTC, no la convierte a la hora de Ecuador
                 fecha=datetime.now(timezone.utc).replace(tzinfo=None),
             )
+            if not await es_responsable_talento_humano(sesion, datos.id_aprobador):
+                raise HTTPException(status_code=403, detail="El aprobador no está habilitado en Talento Humano.")
+            await liberar_reservas(sesion, id_solicitud)
             # se cambia el estado de la solicitud
             solicitud.estado = "RECHAZADA"
             # se inserta la aprobacion y se espera para guardar los cambios
@@ -83,4 +89,43 @@ async def rechazar_solicitud(
             ) from None
         raise
 
+    return respuesta
+
+
+# funcion para aprobar definitivamente y descontar lo reservado en una sola transaccion
+async def aprobar_solicitud(sesion: AsyncSession, id_solicitud: int, datos: AprobacionCrear) -> AprobacionRespuesta:
+    try:
+        async with sesion.begin():
+            # bloque para que un proceso termine antes de empezar otro
+            solicitud = await bloquear_solicitud_y_empleado(sesion, id_solicitud)
+            # validaciones de regla de varios tipo, como vacio, si no es, etc
+            if solicitud is None:
+                raise HTTPException(status_code=404, detail="La solicitud no existe.")
+            if solicitud.tipo != "VACACIONES" or solicitud.estado != "PENDIENTE":
+                raise HTTPException(status_code=409, detail="Solo se aprueban solicitudes de vacaciones pendientes.")
+            if await consultar_aprobaciones_por_solicitud(sesion, id_solicitud):
+                raise HTTPException(status_code=409, detail="La solicitud ya tiene una decisión registrada.")
+            if not await existe_aprobador(sesion, datos.id_aprobador):
+                raise HTTPException(status_code=404, detail="El empleado aprobador no existe.")
+            if not await es_responsable_talento_humano(sesion, datos.id_aprobador):
+                raise HTTPException(status_code=403, detail="El aprobador no está habilitado en Talento Humano.")
+            await validar_solicitud_reservable(sesion, solicitud)
+            await descontar_reservas(sesion, solicitud)
+            # registro con la decision de aprobacion
+            decision = Aprobacion(id_solicitud=id_solicitud, 
+                                  id_aprobador=datos.id_aprobador,
+                                 decision="APROBADA", 
+                                 observacion=datos.observacion,
+                                 fecha=datetime.now(timezone.utc).replace(tzinfo=None))
+            # Actualización del estado de la solicitud
+            solicitud.estado = "APROBADA"
+            decision = await insertar_aprobacion(sesion, decision)
+            await guardar_cambios_solicitud(sesion, solicitud)
+            # obtencion de la respuesta
+            respuesta = AprobacionRespuesta.model_validate(decision)
+    except IntegrityError as error:
+        # manejo d eerrores de la base
+        if getattr(error.orig, "sqlstate", None) in {"23503", "23505"}:
+            raise HTTPException(status_code=409, detail="No se pudo aprobar: revisa las referencias o decisiones existentes.") from None
+        raise
     return respuesta
