@@ -1,4 +1,5 @@
-from sqlalchemy import select, text
+from sqlalchemy import select, text, table, column, BigInteger
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.vacaciones.solicitudes.model import Solicitud
@@ -80,3 +81,43 @@ async def guardar_cambios_solicitud(
     await sesion.refresh(solicitud)
     # devolvemos el objeto completo y actualizado
     return solicitud
+
+# funcion para serializar las operaciones de un mismo empleado, incluso si no tiene saldos
+async def bloquear_empleado(sesion: AsyncSession, id_empleado: int) -> None:
+    # FOR NO KEY UPDATE serializa al empleado sin bloquear las FK que solo leen su ID
+    empleados = table("empleados", column("id_empleado", BigInteger), schema="core")
+    consulta = select(empleados.c.id_empleado).where(empleados.c.id_empleado == id_empleado).with_for_update(key_share=True)
+    if await sesion.scalar(consulta) is None:
+        raise HTTPException(status_code=404, detail="El empleado no existe.")
+
+# funcion para mantener el orden empleado, solicitud y luego saldos en todas las escrituras
+async def bloquear_solicitud_y_empleado(sesion: AsyncSession, id_solicitud: int) -> Solicitud | None:
+    id_empleado = await sesion.scalar(select(Solicitud.id_empleado).where(Solicitud.id_solicitud == id_solicitud))
+    if id_empleado is None:
+        solicitud = await consultar_solicitud_por_id(sesion, id_solicitud)
+        if solicitud is not None:
+            raise HTTPException(status_code=409, detail="La solicitud no tiene empleado asignado.")
+        return None
+    await bloquear_empleado(sesion, id_empleado)
+    return await consultar_solicitud_para_actualizar(sesion, id_solicitud)
+
+# funcion para buscar otra solicitud que comparta al menos un dia de ausencia
+async def consultar_cruce(sesion: AsyncSession, id_empleado: int, inicio, fin, excluir: int | None = None):
+    consulta = select(Solicitud.id_solicitud).where(
+        Solicitud.id_empleado == id_empleado, Solicitud.tipo == "VACACIONES",
+        Solicitud.estado.in_(["PENDIENTE", "APROBADA"]),
+        Solicitud.fecha_inicio <= fin, Solicitud.fecha_fin >= inicio,
+    )
+    if excluir is not None:
+        consulta = consulta.where(Solicitud.id_solicitud != excluir)
+    return await sesion.scalar(consulta.limit(1))
+
+# funcion para detectar solicitudes antiguas que aun no tienen una reserva conciliada
+async def consultar_pendiente_sin_reserva(sesion: AsyncSession, id_empleado: int, excluir: int | None = None):
+    consulta = select(Solicitud.id_solicitud).where(
+        Solicitud.id_empleado == id_empleado, Solicitud.tipo == "VACACIONES",
+        Solicitud.estado == "PENDIENTE", Solicitud.reserva_gestionada.is_(False),
+    )
+    if excluir is not None:
+        consulta = consulta.where(Solicitud.id_solicitud != excluir)
+    return await sesion.scalar(consulta.limit(1))

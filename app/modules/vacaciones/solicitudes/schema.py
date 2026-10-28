@@ -44,6 +44,7 @@ class SolicitudRespuesta(BaseModel):
     # para que la web pueda leerlo como tipo json gracias al from_attributes=True
     model_config = ConfigDict(from_attributes=True)
     # estructura del json con los siguientes atributos
+    reserva_gestionada: bool = False
     id_solicitud: int
     id_empleado: int | None
     tipo: str | None

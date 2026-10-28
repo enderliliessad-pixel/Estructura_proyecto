@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Date, DateTime, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -12,6 +12,8 @@ class Solicitud(Base):
     __tablename__ = "solicitudes"
     __table_args__ = {"schema": "vacaciones"}
     # las relaciones con core empleado estan en la base de datos
+    # distingue las solicitudes nuevas de las antiguas que requieren conciliacion
+    reserva_gestionada: Mapped[bool] = mapped_column(Boolean, default=False)
     id_solicitud: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     id_empleado: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     tipo: Mapped[str | None] = mapped_column(String(100), nullable=True)

@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
+from app.modules.vacaciones.reservas.service import reservar_dias, liberar_reservas
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,8 +11,8 @@ from app.modules.vacaciones.aprobaciones.repository import consultar_aprobacione
 from app.modules.vacaciones.solicitudes.repository import (
     consultar_solicitudes_por_empleado,
     consultar_solicitud_por_id,
-    consultar_solicitud_para_actualizar,
-    existe_empleado,
+    bloquear_solicitud_y_empleado,
+    bloquear_empleado,
     guardar_cambios_solicitud,
     insertar_solicitud,
 )
@@ -33,8 +35,8 @@ async def crear_solicitud(
     try:
         # Confirma al terminar; si ocurre un error, revierte la operación.
         async with sesion.begin():
-            if not await existe_empleado(sesion, datos.id_empleado):
-                raise HTTPException(status_code=404, detail="El empleado no existe.")
+            # bloqueamos al empleado antes de consultar o reservar sus dias
+            await bloquear_empleado(sesion, datos.id_empleado)
             dias = await calcular_dias_solicitud(sesion, datos)
             solicitud = Solicitud(
                 **datos.model_dump(exclude={"dias_solicitados"}),
@@ -44,6 +46,7 @@ async def crear_solicitud(
                 fecha_solicitud=datetime.now(timezone.utc).replace(tzinfo=None),
             )
             solicitud = await insertar_solicitud(sesion, solicitud)
+            await reservar_dias(sesion, solicitud)
             respuesta = SolicitudRespuesta.model_validate(solicitud)
     except IntegrityError as error:
         # La FK protege también si el empleado se elimina durante el registro.
@@ -71,7 +74,7 @@ async def actualizar_solicitud(
 ) -> SolicitudRespuesta:
     async with sesion.begin():
         # Comparte el bloqueo utilizado al aprobar o rechazar.
-        solicitud = await consultar_solicitud_para_actualizar(sesion, id_solicitud)
+        solicitud = await bloquear_solicitud_y_empleado(sesion, id_solicitud)
         if solicitud is None:
             raise HTTPException(status_code=404, detail="La solicitud no existe.")
         if solicitud.tipo != "VACACIONES":
@@ -89,10 +92,13 @@ async def actualizar_solicitud(
             )
 
         dias = await calcular_dias_solicitud(sesion, datos)
+        # liberamos la reserva anterior; si la nueva falla, la transaccion restaura todo
+        await liberar_reservas(sesion, id_solicitud)
         solicitud.fecha_inicio = datos.fecha_inicio
         solicitud.fecha_fin = datos.fecha_fin
         solicitud.dias_solicitados = dias
         solicitud.motivo = datos.motivo
+        await reservar_dias(sesion, solicitud)
         solicitud = await guardar_cambios_solicitud(sesion, solicitud)
         respuesta = SolicitudRespuesta.model_validate(solicitud)
 
@@ -105,7 +111,7 @@ async def cancelar_solicitud(
 ) -> SolicitudRespuesta:
     async with sesion.begin():
         # bloqueamos la fila mientras se comprueba y cambia el estado
-        solicitud = await consultar_solicitud_para_actualizar(sesion, id_solicitud)
+        solicitud = await bloquear_solicitud_y_empleado(sesion, id_solicitud)
         if solicitud is None:
             raise HTTPException(status_code=404, detail="La solicitud no existe.")
         if solicitud.tipo != "VACACIONES":
@@ -122,9 +128,35 @@ async def cancelar_solicitud(
                 status_code=409, detail="No se puede cancelar una solicitud con decisiones registradas."
             )
 
+        # liberamos lo apartado sin registrar consumo de dias
+        await liberar_reservas(sesion, id_solicitud)
         # conservamos los datos originales; esta operación no modifica saldos
         solicitud.estado = "CANCELADA"
         solicitud = await guardar_cambios_solicitud(sesion, solicitud)
         respuesta = SolicitudRespuesta.model_validate(solicitud)
 
+    return respuesta
+
+
+# funcion para incorporar una solicitud antigua al nuevo control de reservas
+async def conciliar_reserva_solicitud(sesion: AsyncSession, id_solicitud: int) -> SolicitudRespuesta:
+    async with sesion.begin():
+        solicitud = await bloquear_solicitud_y_empleado(sesion, id_solicitud)
+        if solicitud is None:
+            raise HTTPException(status_code=404, detail="La solicitud no existe.")
+        if solicitud.estado != "PENDIENTE" or solicitud.tipo != "VACACIONES" or solicitud.reserva_gestionada:
+            raise HTTPException(status_code=409, detail="Solo se concilian vacaciones pendientes antiguas sin reserva.")
+        if await consultar_aprobaciones_por_solicitud(sesion, id_solicitud):
+            raise HTTPException(status_code=409, detail="Revisa las decisiones anteriores antes de conciliar.")
+        # verificamos que el documento antiguo coincida con sus fechas y el calendario actual
+        try:
+            datos = SolicitudActualizar(fecha_inicio=solicitud.fecha_inicio, fecha_fin=solicitud.fecha_fin,
+                                        dias_solicitados=solicitud.dias_solicitados, motivo=solicitud.motivo)
+        except ValidationError:
+            raise HTTPException(status_code=409, detail="Completa los datos de la solicitud antigua antes de conciliar.") from None
+        if solicitud.dias_solicitados is None:
+            raise HTTPException(status_code=409, detail="La solicitud antigua no tiene días registrados.")
+        await calcular_dias_solicitud(sesion, datos)
+        await reservar_dias(sesion, solicitud, conciliacion=True)
+        respuesta = SolicitudRespuesta.model_validate(solicitud)
     return respuesta

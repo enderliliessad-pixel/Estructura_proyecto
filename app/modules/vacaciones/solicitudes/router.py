@@ -1,3 +1,6 @@
+from app.modules.vacaciones.solicitudes.service import conciliar_reserva_solicitud
+from app.modules.vacaciones.reservas.service import obtener_historial_reservas
+from app.modules.vacaciones.reservas.schema import ReservaRespuesta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path
@@ -82,7 +85,7 @@ async def consultar_detalle_solicitud(
 ) -> SolicitudRespuesta:
     return await obtener_solicitud_por_id(sesion, id_solicitud)
 
-# pticion para actualizar fechas o motivos
+# peticion para actualizar fechas o motivos
 @router.put(
     "/detalle/{id_solicitud}",
     response_model=SolicitudRespuesta,
@@ -128,3 +131,16 @@ async def cancelar_solicitud_pendiente(
     sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
 ) -> SolicitudRespuesta:
     return await cancelar_solicitud(sesion, id_solicitud)
+
+# ruta para consultar el historial de reservas sin modificarlo
+@router.get("/detalle/{id_solicitud}/reservas", response_model=list[ReservaRespuesta])
+async def consultar_historial_reservas(id_solicitud: Annotated[int, Path(ge=1, le=9223372036854775807)],
+                                     sesion: Annotated[AsyncSession, Depends(obtener_sesion)]):
+    return await obtener_historial_reservas(sesion, id_solicitud)
+
+# ruta para incorporar pendientes antiguos despues de revisar su documento
+@router.post("/detalle/{id_solicitud}/reserva", response_model=SolicitudRespuesta,
+             summary="Conciliar la reserva de una solicitud pendiente antigua")
+async def conciliar_reserva(id_solicitud: Annotated[int, Path(ge=1, le=9223372036854775807)],
+                           sesion: Annotated[AsyncSession, Depends(obtener_sesion)]):
+    return await conciliar_reserva_solicitud(sesion, id_solicitud)
