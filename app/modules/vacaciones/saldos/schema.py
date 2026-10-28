@@ -16,6 +16,10 @@ class SaldoRespuesta(BaseModel):
     dias_utilizados: Decimal | None
     dias_disponibles: Decimal | None
 
+    # disponibles conserva el saldo contable; libres excluye lo que ya esta reservado
+    dias_reservados: Decimal = Decimal("0.00")
+    dias_libres: Decimal = Decimal("0.00")
+    dias_anticipables: Decimal = Decimal("0.00")
     fecha_inicio_periodo: date | None = None
     fecha_fin_periodo: date | None = None
     fecha_acreditacion: date | None = None
@@ -25,6 +29,8 @@ class ResumenSaldoRespuesta(BaseModel):
     id_empleado: int
     fecha_consulta: date
     total_disponible: Decimal
+    total_reservado: Decimal = Decimal("0.00")
+    total_anticipable: Decimal = Decimal("0.00")
     periodos_acreditados: list[SaldoRespuesta]
     periodos_no_acreditados: list[SaldoRespuesta]
 
@@ -35,6 +41,7 @@ class DescuentoPrevisto(BaseModel):
     dias_disponibles: Decimal
     dias_a_descontar: Decimal
     saldo_resultante: Decimal
+    es_anticipo: bool = False
 
 # clase para mostrar si el saldo alcanza y como se repartirian los descuentos
 class PrevisionRespuesta(BaseModel):
@@ -43,10 +50,11 @@ class PrevisionRespuesta(BaseModel):
     dias_solicitados: Decimal
     feriados_excluidos: list[date]
     total_disponible: Decimal
+    total_anticipable: Decimal = Decimal("0.00")
     saldo_suficiente: bool
     dias_sin_cobertura: Decimal
     descuentos: list[DescuentoPrevisto]
     advertencia: str = (
-        "Previsión con saldos acreditados a la fecha de consulta. No reserva ni descuenta días; "
-        "no autoriza anticipos. Se deberá recalcular al realizar el descuento efectivo."
+       "Previsión con días libres y hasta 15 días anticipados del período en curso. "
+        "No reserva ni descuenta; al registrar se validan saldo, cruces y máximo de acumulados."
     )
