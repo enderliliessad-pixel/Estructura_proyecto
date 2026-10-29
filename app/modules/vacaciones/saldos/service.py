@@ -1,9 +1,10 @@
 # usamos el día local del instituto, no la zona horaria del servidor
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from app.modules.vacaciones.solicitudes.repository import existe_empleado
 from app.modules.vacaciones.calculos.service import calcular_dias_vacaciones
 from app.modules.vacaciones.saldos.schema import (
@@ -16,6 +17,11 @@ from app.modules.vacaciones.saldos.repository import (
 )
 from app.modules.vacaciones.saldos.schema import SaldoRespuesta
 from app.modules.vacaciones.reservas.repository import consultar_reservas_activas
+from app.modules.vacaciones.saldos.model import Saldo
+from app.modules.vacaciones.saldos.repository import consultar_datos_empleado, insertar_periodos
+from app.modules.vacaciones.saldos.schema import GeneracionPeriodosCrear, GeneracionPeriodosRespuesta
+from app.modules.vacaciones.solicitudes.repository import bloquear_empleado
+from app.modules.vacaciones.aprobaciones.repository import es_responsable_talento_humano
 
 # funcion async para obtener los saldos y devuelve una lista
 async def obtener_saldos_por_empleado(
@@ -136,3 +142,97 @@ async def prever_descuentos(
         saldo_suficiente=faltan == 0, dias_sin_cobertura=faltan,
         descuentos=descuentos,
     )
+
+
+# calculamos cada aniversario desde la fecha original para conservar el 29 de febrero
+# en años no bisiestos usamos el ultimo dia de febrero
+def fecha_aniversario(fecha_ingreso: date, anios: int) -> date:
+    from calendar import monthrange
+
+    anio = fecha_ingreso.year + anios
+    dia = min(fecha_ingreso.day, monthrange(anio, fecha_ingreso.month)[1])
+    return date(anio, fecha_ingreso.month, dia)
+
+
+# el numero indica los años completos que tendra al acreditar ese periodo
+def dias_por_antiguedad(anios_completos: int) -> Decimal:
+    if anios_completos < 1:
+        raise ValueError("La asignación corresponde a un año de servicio completo.")
+    return Decimal(min(30, 15 + max(0, anios_completos - 5))).quantize(Decimal("0.00"))
+
+
+# crea los periodos faltantes hasta el periodo en curso, sin reescribir saldos anteriores
+async def generar_periodos(
+    sesion: AsyncSession, id_empleado: int, datos: GeneracionPeriodosCrear,
+) -> GeneracionPeriodosRespuesta:
+    hoy = fecha_actual()
+    try:
+        async with sesion.begin():
+            if not await es_responsable_talento_humano(sesion, datos.id_responsable):
+                raise HTTPException(status_code=403, detail="Responsable no habilitado en Talento Humano.")
+            # compartimos el bloqueo de solicitudes y aprobaciones para no competir por el saldo
+            await bloquear_empleado(sesion, id_empleado)
+            empleado = await consultar_datos_empleado(sesion, id_empleado)
+            ingreso = empleado["fecha_ingreso"]
+            if empleado["estado"] is not True:
+                raise HTTPException(status_code=409, detail="El empleado debe estar activo para generar períodos.")
+            if ingreso is None or ingreso > hoy:
+                raise HTTPException(status_code=409, detail="Revisa la fecha de ingreso del empleado en Core.")
+
+            # esta consulta tambien valida cantidades, fechas, cruces y reservas existentes
+            await obtener_resumen_saldo(sesion, id_empleado)
+            existentes = await consultar_saldos_por_empleado(sesion, id_empleado)
+            for saldo in existentes:
+                anios = saldo.fecha_inicio_periodo.year - ingreso.year
+                if (anios < 0 or saldo.fecha_inicio_periodo != fecha_aniversario(ingreso, anios)
+                        or saldo.fecha_inicio_periodo.year >= 9999
+                        or saldo.fecha_acreditacion != fecha_aniversario(ingreso, anios + 1)
+                        or saldo.fecha_fin_periodo != saldo.fecha_acreditacion - timedelta(days=1)):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Revisa las fechas del saldo {saldo.id_saldo}: no coinciden con los aniversarios de ingreso. No se modificó ningún período.",
+                    )
+
+            anios_actuales = hoy.year - ingreso.year
+            if fecha_aniversario(ingreso, anios_actuales) > hoy:
+                anios_actuales -= 1
+            inicio_actual = fecha_aniversario(ingreso, anios_actuales)
+            # sin fecha explicita continuamos desde el ultimo periodo iniciado que ya conocemos
+            # si no hay saldos, solo abrimos el actual; no suponemos vacaciones historicas sin usar
+            inicios = [s.fecha_inicio_periodo for s in existentes if s.fecha_inicio_periodo <= hoy]
+            desde = datos.fecha_desde or (max(inicios) if inicios else inicio_actual)
+            anios_desde = desde.year - ingreso.year
+            if (desde < ingreso or desde > hoy
+                    or desde != fecha_aniversario(ingreso, anios_desde)):
+                raise HTTPException(status_code=422, detail="fecha_desde debe ser el ingreso o un aniversario ya alcanzado del empleado.")
+            if hoy.year >= 9999:
+                raise HTTPException(status_code=422, detail="No se puede representar el siguiente aniversario.")
+
+            por_inicio = {s.fecha_inicio_periodo: s for s in existentes}
+            nuevos = []
+            for anios in range(anios_desde, anios_actuales + 1):
+                inicio = fecha_aniversario(ingreso, anios)
+                if inicio in por_inicio:
+                    # nunca reiniciamos utilizados, anticipos o reservas al repetir la operacion
+                    continue
+                acreditacion = fecha_aniversario(ingreso, anios + 1)
+                asignados = dias_por_antiguedad(anios + 1)
+                nuevos.append(Saldo(
+                    id_empleado=id_empleado, periodo=f"{inicio.year}-{acreditacion.year}",
+                    fecha_inicio_periodo=inicio,
+                    fecha_fin_periodo=acreditacion - timedelta(days=1),
+                    fecha_acreditacion=acreditacion,
+                    dias_asignados=asignados, dias_utilizados=Decimal("0.00"),
+                    dias_disponibles=asignados,
+                ))
+            await insertar_periodos(sesion, nuevos)
+            respuesta = GeneracionPeriodosRespuesta(
+                id_empleado=id_empleado, fecha_ingreso=ingreso, fecha_generacion=hoy,
+                fecha_desde=desde, periodos_creados=[s.id_saldo for s in nuevos],
+                periodos_conservados=[s.id_saldo for s in existentes],
+                resumen=await obtener_resumen_saldo(sesion, id_empleado),
+            )
+    except IntegrityError:
+        # un conflicto de integridad revierte tambien los periodos insertados previamente
+        raise HTTPException(status_code=409, detail="No se pudieron generar los períodos. Revisa duplicados y restricciones de la base.") from None
+    return respuesta

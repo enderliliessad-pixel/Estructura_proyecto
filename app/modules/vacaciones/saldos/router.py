@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import obtener_sesion
 from app.modules.vacaciones.saldos.schema import SaldoRespuesta
 from app.modules.vacaciones.saldos.service import obtener_saldos_por_empleado
+from app.modules.vacaciones.saldos.schema import GeneracionPeriodosCrear, GeneracionPeriodosRespuesta
+from app.modules.vacaciones.saldos.service import generar_periodos
 
 # ruta para conectar con el main y uso de prefix para saber la ruta de este controlador
 router = APIRouter(
@@ -64,6 +66,7 @@ async def consultar_resumen_saldo(
     ),
     responses={404: {"description": "El empleado no existe."}, 409: {"description": "Revisar los datos de los saldos."}},
 )
+
 # funcion para consultar prevision
 async def consultar_prevision(
     id_empleado: Annotated[int, Path(ge=1, le=9223372036854775807)],
@@ -71,3 +74,25 @@ async def consultar_prevision(
     sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
 ) -> PrevisionRespuesta:
     return await prever_descuentos(sesion, id_empleado, fecha_inicio, fecha_fin)
+
+# ruta para generar periodos sin volver a asignar los dias de saldos ya existentes
+@router.post(
+    "/{id_empleado}/periodos", response_model=GeneracionPeriodosRespuesta,
+    summary="Generar períodos y asignar días por antigüedad",
+    description=(
+        "Operación local de Talento Humano; identidad autenticada pendiente de Core. "
+        "Crea los períodos faltantes hasta el que está en curso y conserva los existentes. "
+        "Sin fecha_desde continúa desde el último período iniciado registrado; si no hay saldos, "
+        "crea solo el actual. Para recuperar períodos anteriores indica su fecha inicial, "
+        "tras revisar que no representen vacaciones ya disfrutadas. No se ejecuta en segundo plano."
+    ),
+    responses={403: {"description": "Responsable no habilitado."},
+               404: {"description": "El empleado no existe."},
+               409: {"description": "Revisar empleado o saldos existentes."}},
+)
+async def registrar_periodos(
+    id_empleado: Annotated[int, Path(ge=1, le=9223372036854775807)],
+    datos: GeneracionPeriodosCrear,
+    sesion: Annotated[AsyncSession, Depends(obtener_sesion)],
+) -> GeneracionPeriodosRespuesta:
+    return await generar_periodos(sesion, id_empleado, datos)

@@ -31,8 +31,8 @@ def db(monkeypatch):
     async def setup():
         async with engine.begin() as c:
             for sql in [
-                'CREATE TABLE core.empleados (id_empleado INTEGER PRIMARY KEY)',
-                'INSERT INTO core.empleados VALUES (1),(2)',
+                'CREATE TABLE core.empleados (id_empleado INTEGER PRIMARY KEY, fecha_ingreso DATE, estado BOOLEAN)',
+                "INSERT INTO core.empleados VALUES (1,'2023-11-15',TRUE),(2,'2026-02-01',TRUE)",
                 'CREATE TABLE vacaciones.feriados (id_feriado INTEGER PRIMARY KEY, fecha DATE, descripcion TEXT, tipo TEXT, estado BOOLEAN)',
                 '''CREATE TABLE vacaciones.saldos (id_saldo INTEGER PRIMARY KEY, id_empleado BIGINT, periodo TEXT, dias_asignados NUMERIC, dias_utilizados NUMERIC, dias_disponibles NUMERIC, fecha_inicio_periodo DATE, fecha_fin_periodo DATE, fecha_acreditacion DATE)''',
                 '''INSERT INTO vacaciones.saldos VALUES

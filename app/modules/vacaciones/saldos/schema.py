@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # esquema para verificar el formato 
 class SaldoRespuesta(BaseModel):
@@ -58,3 +58,20 @@ class PrevisionRespuesta(BaseModel):
        "Previsión con días libres y hasta 15 días anticipados del período en curso. "
         "No reserva ni descuenta; al registrar se validan saldo, cruces y máximo de acumulados."
     )
+
+# fecha_desde permite recuperar periodos faltantes solo desde un inicio revisado
+class GeneracionPeriodosCrear(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id_responsable: int = Field(ge=1, le=9223372036854775807)
+    fecha_desde: date | None = None
+
+
+# devolvemos los identificadores creados y el saldo calculado con sus reservas
+class GeneracionPeriodosRespuesta(BaseModel):
+    id_empleado: int
+    fecha_ingreso: date
+    fecha_generacion: date
+    fecha_desde: date
+    periodos_creados: list[int]
+    periodos_conservados: list[int]
+    resumen: ResumenSaldoRespuesta

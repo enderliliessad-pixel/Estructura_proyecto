@@ -18,6 +18,7 @@ from app.modules.vacaciones.solicitudes.schema import SolicitudCrear
 from app.modules.vacaciones.aprobaciones.service import aprobar_solicitud
 from app.modules.vacaciones.aprobaciones.schema import AprobacionCrear
 from app.modules.vacaciones.saldos import service as saldos_service
+from app.modules.vacaciones.saldos.schema import GeneracionPeriodosCrear
 
 URL = os.environ.get('VACACIONES_TEST_DATABASE_URL')
 PGLITE = os.environ.get('VACACIONES_TEST_PGLITE') == '1'
@@ -43,7 +44,7 @@ def preparar_postgresql():
                 if existente:
                     pytest.fail('La base de pruebas ya contiene core/vacaciones; crea una base vacía nueva')
                 raw=await c.get_raw_connection()
-                for nombre in ['01_core_dependencias.sql','02_vacaciones.sql','03_periodos_y_descuentos.sql','04_reservas_y_aprobacion.sql','04_reservas_y_aprobacion.sql']:
+                for nombre in ['01_core_dependencias.sql','02_vacaciones.sql','03_periodos_y_descuentos.sql','04_reservas_y_aprobacion.sql','04_reservas_y_aprobacion.sql','05_periodos_unicos.sql','05_periodos_unicos.sql']:
                     sql=(Path(__file__).resolve().parents[1]/'sql'/nombre).read_text()
                     if PGLITE:
                         sql=sql.replace('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";','')
@@ -141,4 +142,61 @@ def test_postgresql_dos_aprobaciones_simultaneas(escenario):
         async with factory() as s:
             assert await s.scalar(text('SELECT dias_disponibles FROM vacaciones.saldos'))==5
             assert await s.scalar(text('SELECT count(*) FROM vacaciones.descuentos_por_periodo'))==1
+    escenario(prueba)
+
+
+async def generar(factory):
+    async with factory() as sesion:
+        return await saldos_service.generar_periodos(
+            sesion, 1, GeneracionPeriodosCrear(id_responsable=2, fecha_desde='2024-02-01'),
+        )
+
+
+def test_postgresql_generacion_y_periodo_unico(escenario):
+    from sqlalchemy.exc import IntegrityError
+    async def prueba(factory):
+        async with factory.begin() as s:
+            await s.execute(text("UPDATE core.empleados SET fecha_ingreso='2024-02-01',estado=TRUE WHERE id_empleado=1"))
+        solicitud = await alta(factory)
+        assert await aprobar(factory, solicitud) == 201
+        r = await generar(factory)
+        assert len(r.periodos_creados) == 2
+        assert (await generar(factory)).periodos_creados == []
+        async with factory() as s:
+            assert await s.scalar(text('SELECT count(*) FROM vacaciones.saldos')) == 3
+            assert await s.scalar(text('SELECT dias_utilizados FROM vacaciones.saldos WHERE id_saldo=1')) == 10
+            assert await s.scalar(text('SELECT count(*) FROM vacaciones.descuentos_por_periodo')) == 1
+        async with factory() as s:
+            with pytest.raises(IntegrityError):
+                async with s.begin():
+                    await s.execute(text("INSERT INTO vacaciones.saldos(id_empleado,periodo,dias_asignados,dias_utilizados,dias_disponibles,fecha_inicio_periodo,fecha_fin_periodo,fecha_acreditacion) VALUES (1,'Duplicado',15,0,15,'2026-02-01','2027-01-31','2027-02-01')"))
+    escenario(prueba)
+
+
+@pytest.mark.skipif(PGLITE,reason='PGlite no reproduce la concurrencia real de PostgreSQL')
+def test_postgresql_dos_generaciones_simultaneas(escenario):
+    async def prueba(factory):
+        async with factory.begin() as s:
+            await s.execute(text("UPDATE core.empleados SET fecha_ingreso='2024-02-01',estado=TRUE WHERE id_empleado=1"))
+        resultados = await asyncio.wait_for(asyncio.gather(generar(factory), generar(factory)), timeout=15)
+        assert sorted(len(r.periodos_creados) for r in resultados) == [0, 2]
+        async with factory() as s:
+            assert await s.scalar(text('SELECT count(*) FROM vacaciones.saldos')) == 3
+    escenario(prueba)
+
+
+@pytest.mark.skipif(PGLITE,reason='PGlite no reproduce la concurrencia real de PostgreSQL')
+def test_postgresql_generacion_y_aprobacion_simultaneas(escenario):
+    async def prueba(factory):
+        async with factory.begin() as s:
+            await s.execute(text("UPDATE core.empleados SET fecha_ingreso='2024-02-01',estado=TRUE WHERE id_empleado=1"))
+        solicitud = await alta(factory)
+        generacion, decision = await asyncio.wait_for(
+            asyncio.gather(generar(factory), aprobar(factory, solicitud)), timeout=15,
+        )
+        assert len(generacion.periodos_creados) == 2 and decision == 201
+        async with factory() as s:
+            assert await s.scalar(text('SELECT dias_utilizados FROM vacaciones.saldos WHERE id_saldo=1')) == 10
+            assert await s.scalar(text('SELECT dias_disponibles FROM vacaciones.saldos WHERE id_saldo=1')) == 5
+            assert await s.scalar(text('SELECT count(*) FROM vacaciones.descuentos_por_periodo')) == 1
     escenario(prueba)
